@@ -32,7 +32,7 @@ export default function Player() {
   // frame - re-reading getBoundingClientRect() on every animation frame
   // forces a synchronous layout recalculation each time, which is what was
   // causing the visible stutter during auto-scroll.
-  const chordPositionsRef = useRef([])
+  const chordPositionsRef = useRef({ lines: [], avgLineGap: 0 })
 
   const parsed = useMemo(() => (song ? parseSong(song.raw_text) : null), [song])
   const speed = bpmToSpeed(bpm)
@@ -69,10 +69,30 @@ export default function Player() {
     const measure = () => {
       const nodes = Array.from(el.querySelectorAll('[data-chord]'))
       const containerRect = el.getBoundingClientRect()
-      chordPositionsRef.current = nodes.map((node) => {
+      const positions = nodes.map((node) => {
         const rect = node.getBoundingClientRect()
         return { chord: node.dataset.chord, y: rect.top - containerRect.top + el.scrollTop }
       })
+
+      // Multiple chords often share one lyric line (e.g. "[Em]How many
+      // [C]times do I have to tell [G]you"). Since scrolling only moves
+      // vertically, those chords all sit at the same y - grouping them by
+      // line lets the lookup below interpolate through them in reading
+      // order as that line crosses the focus band, instead of jumping
+      // straight to the last chord on the line the instant it appears.
+      const lines = []
+      for (const p of positions) {
+        const last = lines[lines.length - 1]
+        if (last && Math.abs(p.y - last.y) < 2) {
+          last.chords.push(p.chord)
+        } else {
+          lines.push({ y: p.y, chords: [p.chord] })
+        }
+      }
+      const gaps = lines.slice(1).map((l, i) => l.y - lines[i].y).filter((g) => g > 0)
+      const avgLineGap = gaps.length ? gaps.reduce((a, b) => a + b, 0) / gaps.length : fontSize * 2.6
+
+      chordPositionsRef.current = { lines, avgLineGap }
     }
 
     // Wait a frame so fonts/layout have settled before measuring.
@@ -87,15 +107,24 @@ export default function Player() {
   // Cheap: just compares scrollTop against pre-measured positions, no DOM reads.
   useEffect(() => {
     const el = containerRef.current
-    const positions = chordPositionsRef.current
-    if (!el || !positions.length) return
+    const { lines, avgLineGap } = chordPositionsRef.current
+    if (!el || !lines?.length) return
     const focusY = el.scrollTop + el.clientHeight * 0.35
-    let current = null
-    for (const p of positions) {
-      if (p.y <= focusY) current = p.chord
+
+    let activeIdx = -1
+    for (let i = 0; i < lines.length; i++) {
+      if (lines[i].y <= focusY) activeIdx = i
       else break
     }
-    if (current) setCurrentChord(current)
+    if (activeIdx === -1) return
+
+    const activeLine = lines[activeIdx]
+    const nextY = activeIdx + 1 < lines.length ? lines[activeIdx + 1].y : activeLine.y + avgLineGap
+    const lineSpan = Math.max(1, nextY - activeLine.y)
+    const frac = Math.min(1, Math.max(0, (focusY - activeLine.y) / lineSpan))
+    const chordIdx = Math.min(activeLine.chords.length - 1, Math.floor(frac * activeLine.chords.length))
+
+    setCurrentChord(activeLine.chords[chordIdx])
   }, [progress])
 
   if (!song || !parsed) {
