@@ -24,17 +24,21 @@ function RestartIcon() {
   )
 }
 
+const MIN_BPM = 40
+const MAX_BPM = 200
+
 export default function ScrollControls({
   isPlaying,
   onPlay,
   onPause,
   onRestart,
-  speed,
-  onSpeedChange,
-  onTap,
   bpm,
+  onBpmChange,
+  onTap,
   progress,
 }) {
+  const clamp = (n) => Math.min(MAX_BPM, Math.max(MIN_BPM, n))
+
   return (
     <div className="fixed bottom-0 inset-x-0 z-20">
       <div className="h-[2px] bg-ink-border/60">
@@ -63,18 +67,30 @@ export default function ScrollControls({
           </button>
 
           <div className="flex-1 flex items-center gap-3">
-            <span className="text-paper-faint text-xs font-sans w-10">
-              {speed.toFixed(0)}
-            </span>
+            <label className="flex items-center gap-1.5 shrink-0">
+              <input
+                type="number"
+                min={MIN_BPM}
+                max={MAX_BPM}
+                value={bpm}
+                onChange={(e) => {
+                  const n = Number(e.target.value)
+                  if (!Number.isNaN(n)) onBpmChange(clamp(n))
+                }}
+                className="w-14 bg-ink-soft border border-ink-border rounded-md px-1.5 py-1 text-paper text-sm text-center focus:outline-none focus:border-accent transition-colors"
+                aria-label="Tempo in beats per minute"
+              />
+              <span className="text-paper-faint text-xs font-sans">BPM</span>
+            </label>
             <input
               type="range"
-              min={5}
-              max={120}
+              min={MIN_BPM}
+              max={MAX_BPM}
               step={1}
-              value={speed}
-              onChange={(e) => onSpeedChange(Number(e.target.value))}
+              value={bpm}
+              onChange={(e) => onBpmChange(Number(e.target.value))}
               className="w-full accent-accent"
-              aria-label="Scroll speed"
+              aria-label="Tempo slider"
             />
           </div>
 
@@ -82,7 +98,7 @@ export default function ScrollControls({
             onClick={onTap}
             className="text-xs font-sans text-paper-dim hover:text-paper border border-ink-border rounded-full px-3 py-2 transition-colors shrink-0"
           >
-            {bpm ? `${bpm} bpm` : 'Tap tempo'}
+            Tap tempo
           </button>
         </div>
       </div>
